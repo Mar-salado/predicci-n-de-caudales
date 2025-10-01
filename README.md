@@ -49,9 +49,41 @@ incluye las columnas `date`, `precipitation_mm`, `temp_max_c` y
 > **Nota:** Open-Meteo no requiere autenticación, pero respeta sus límites de
 uso y términos de servicio.
 
-## Script histórico previo
+## Descarga histórica de datos meteorológicos (Open-Meteo)
 
-Se mantiene el script [`download_meteo.py`](download_meteo.py) que descarga
-series diarias de la misma API con un enfoque distinto (archivo Excel con
-precipitación y temperaturas mínima, máxima y media para un rango de fechas
-personalizado).
+El script [`download_meteo.py`](download_meteo.py) descarga series históricas
+de precipitación diaria acumulada y temperaturas máxima, mínima y media para
+un rango de fechas personalizado y guarda los resultados en un archivo Excel.
+Se apoya en la API pública de [Open-Meteo](https://open-meteo.com/), que no
+requiere autenticación.
+
+### Requisitos
+
+- Python 3.9 o superior
+- Paquetes: `requests`, `pandas`
+
+Instalación rápida:
+
+```bash
+pip install requests pandas
+```
+
+### Uso
+
+```bash
+python download_meteo.py --lat <LATITUD> --lon <LONGITUD> \
+    --start AAAA-MM-DD --end AAAA-MM-DD [--timezone ZONA/HORARIA] [--out archivo.xlsx]
+```
+
+Parámetros principales:
+
+- `--lat` / `--latitude`: Latitud en grados decimales (obligatorio).
+- `--lon` / `--longitude`: Longitud en grados decimales (obligatorio).
+- `--start`: Fecha inicial del intervalo en formato ISO AAAA-MM-DD (obligatorio).
+- `--end`: Fecha final del intervalo en formato ISO AAAA-MM-DD (obligatorio).
+- `--timezone`: Zona horaria para las fechas generadas. Por defecto `America/Lima`.
+- `--out`: Ruta del archivo Excel a crear. Por defecto `datos_meteo.xlsx`.
+
+El intervalo debe abarcar al menos 10 días (ambas fechas inclusive). El archivo
+Excel resultante contiene las columnas `Fecha`, `precipitacion_mm`, `temp_max_c`,
+`temp_min_c` y `temp_media_c`.
