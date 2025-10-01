@@ -38,10 +38,14 @@ Parámetros principales:
   API).
 - `--output-dir`: (Opcional) Directorio donde se guardará el archivo CSV. Por
   defecto, `data/`.
+- `--point-id`: (Opcional) Identificador del punto que se añadirá al nombre del
+  archivo de salida. Si se omite, se genera automáticamente a partir de la
+  latitud/longitud.
 
-El archivo generado se denomina `forecast_<AAAAMMDD>.csv` e incluye las
-columnas `date`, `precipitation_mm`, `temp_max_c` y `temp_min_c`.
-
+El archivo generado se denomina `forecast_<IDENTIFICADOR>_<AAAAMMDD>.csv` e
+incluye las columnas `date`, `precipitation_mm`, `temp_max_c` y
+`temp_min_c`. El identificador por defecto utiliza las coordenadas normalizadas
+(por ejemplo, `forecast_lat12p3456N_lon076p5432W_20240101.csv`).
 > **Nota:** Open-Meteo no requiere autenticación, pero respeta sus límites de
 uso y términos de servicio.
 
