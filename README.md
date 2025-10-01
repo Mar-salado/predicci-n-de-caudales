@@ -38,14 +38,40 @@ Parámetros principales:
   API).
 - `--output-dir`: (Opcional) Directorio donde se guardará el archivo CSV. Por
   defecto, `data/`.
-- `--point-id`: (Opcional) Identificador del punto que se añadirá al nombre del
-  archivo de salida. Si se omite, se genera automáticamente a partir de la
-  latitud/longitud.
+- `--points-file`: (Opcional) CSV con columnas `Name`, `Latitud` y `Longitud`
+  para descargar múltiples puntos en una sola ejecución.
+- `--interval-minutes`: (Opcional) Intervalo en minutos entre ejecuciones
+  consecutivas al usar `--iterations` o `--continuous`. Por defecto, 60 minutos.
+- `--iterations`: (Opcional) Número de iteraciones en modo iterativo. Si no se
+  especifica, solo se ejecuta una descarga.
+- `--continuous`: Activa el modo continuo (se ejecuta hasta recibir `Ctrl+C`).
+- `--keep-last`: (Opcional) Conserva únicamente los `N` archivos más recientes
+  por punto; el resto se elimina tras cada iteración.
 
-El archivo generado se denomina `forecast_<IDENTIFICADOR>_<AAAAMMDD>.csv` e
-incluye las columnas `date`, `precipitation_mm`, `temp_max_c` y
-`temp_min_c`. El identificador por defecto utiliza las coordenadas normalizadas
-(por ejemplo, `forecast_lat12p3456N_lon076p5432W_20240101.csv`).
+Los archivos generados incorporan la marca temporal de cada ejecución en su
+nombre (`forecast_<punto>_<AAAAMMDD_HHMMSS>.csv`) e incluyen las columnas
+`date`, `precipitation_mm`, `temp_max_c` y `temp_min_c`. Cuando no se indica un
+nombre para el punto, se emplea uno derivado de las coordenadas.
+
+### Modo continuo
+
+Para programar ejecuciones periódicas basta con usar `--iterations` o
+`--continuous`. Por ejemplo, para descargar datos cada 30 minutos durante 12
+iteraciones:
+
+```bash
+python scripts/download_forecast.py 4.6097 -74.0817 --interval-minutes 30 --iterations 12
+```
+
+Si se desea mantener la descarga indefinidamente hasta interrumpirla manualmente:
+
+```bash
+python scripts/download_forecast.py 4.6097 -74.0817 --interval-minutes 60 --continuous
+```
+
+Puedes detener la ejecución continua con `Ctrl+C`, o bien integrarla en
+herramientas del sistema como `systemd` o `cron` para que gestionen el ciclo de
+vida del proceso.
 > **Nota:** Open-Meteo no requiere autenticación, pero respeta sus límites de
 uso y términos de servicio.
 
