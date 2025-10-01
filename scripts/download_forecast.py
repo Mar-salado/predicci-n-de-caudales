@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+!/usr/bin/env python3
 """Descarga pronósticos diarios ECMWF Open Data a 10 días."""
 
 import argparse
@@ -59,12 +59,17 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def build_request_params(args: argparse.Namespace) -> Dict[str, Any]:
-    end_date = args.start_date + dt.timedelta(days=args.forecast_days - 1)
+def build_request_params(
+    latitude: float,
+    longitude: float,
+    start_date: dt.date,
+    forecast_days: int,
+) -> Dict[str, Any]:
+    end_date = start_date + dt.timedelta(days=forecast_days - 1)
     return {
-        "latitude": args.latitude,
-        "longitude": args.longitude,
-        "start_date": args.start_date.isoformat(),
+        "latitude": latitude,
+        "longitude": longitude,
+        "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "timezone": "UTC",
         "daily": [
@@ -155,13 +160,12 @@ def main() -> None:
     timestamp = args.start_date.strftime("%Y%m%d")
 
     for point in iterate_points(args):
-        point_args = argparse.Namespace(
+        params = build_request_params(
             latitude=point["latitude"],
             longitude=point["longitude"],
             start_date=args.start_date,
             forecast_days=args.forecast_days,
         )
-        params = build_request_params(point_args)
         payload = fetch_forecast(params)
         rows = parse_daily_data(payload)
 
