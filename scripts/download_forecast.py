@@ -1,12 +1,13 @@
-!/usr/bin/env python3
+#!/usr/bin/env python3
 """Descarga pronósticos diarios ECMWF Open Data a 10 días."""
 
 import argparse
 import csv
 import datetime as dt
 import re
+import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, cast
 
 import requests
 
@@ -47,6 +48,33 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Ruta a un CSV con columnas Name, Latitud, Longitud para descargar múltiples puntos.",
     )
+    parser.add_argument(
+        "--interval-minutes",
+        type=float,
+        default=60,
+        help="Intervalo en minutos entre descargas consecutivas en modo iterativo (por defecto: 60).",
+    )
+    loop_group = parser.add_mutually_exclusive_group()
+    loop_group.add_argument(
+        "--iterations",
+        type=int,
+        metavar="N",
+        help="Número de iteraciones a ejecutar. Si se omite, se realiza una sola iteración.",
+    )
+    loop_group.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Ejecuta descargas indefinidas hasta recibir una señal de parada (Ctrl+C).",
+    )
+    parser.add_argument(
+        "--keep-last",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "Número de archivos más recientes a conservar por punto. Si es 0, no se elimina ninguno."
+        ),
+    )
     args = parser.parse_args()
 
     if args.points_file is None:
@@ -55,6 +83,15 @@ def parse_args() -> argparse.Namespace:
     else:
         if not args.points_file.exists():
             parser.error(f"El archivo de puntos '{args.points_file}' no existe.")
+
+    if args.iterations is None and not args.continuous:
+        args.iterations = 1
+    if args.iterations is not None and args.iterations < 1:
+        parser.error("--iterations debe ser un entero positivo.")
+    if args.interval_minutes <= 0:
+        parser.error("--interval-minutes debe ser un número positivo.")
+    if args.keep_last < 0:
+        parser.error("--keep-last no puede ser negativo.")
 
     return args
 
@@ -81,28 +118,7 @@ def build_request_params(
 
 
 def fetch_forecast(params: Dict[str, Any]) -> Dict[str, Any]:
-    response = requests.get(ECMWF_API_URL, params=params, timeout=30)
-    response.raise_for_status()
-    return response.json()
-
-
-def parse_daily_data(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    daily = payload.get("daily")
-    if not daily:
-        raise ValueError("La respuesta no contiene el bloque 'daily'.")
-
-    dates = daily.get("time", [])
-    precipitation = daily.get("precipitation_sum", [])
-    temp_max = daily.get("temperature_2m_max", [])
-    temp_min = daily.get("temperature_2m_min", [])
-
-    if not (len(dates) == len(precipitation) == len(temp_max) == len(temp_min)):
-        raise ValueError("Los arrays diarios no tienen el mismo tamaño.")
-
-    rows: List[Dict[str, Any]] = []
-    for date, pr, tmax, tmin in zip(dates, precipitation, temp_max, temp_min):
-        rows.append(
-            {
+@@ -106,78 +143,118 @@ def parse_daily_data(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "date": date,
                 "precipitation_mm": pr,
                 "temp_max_c": tmax,
@@ -126,6 +142,42 @@ def save_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
 def slugify(value: str) -> str:
     slug = re.sub(r"[^\w-]+", "_", value.strip())
     return slug or "punto"
+
+
+def rotate_history(output_dir: Path, point_slug: str, keep_last: int) -> None:
+    if keep_last <= 0:
+        return
+
+    pattern = f"forecast_{point_slug}_*.csv"
+    files = sorted(output_dir.glob(pattern))
+    excess = len(files) - keep_last
+    for old_file in files[: max(0, excess)]:
+        try:
+            old_file.unlink()
+        except OSError as exc:
+            print(f"No se pudo eliminar '{old_file}': {exc}")
+
+
+def run_iteration(args: argparse.Namespace, run_timestamp: dt.datetime) -> None:
+    run_id = run_timestamp.strftime("%Y%m%d_%H%M%S")
+
+    for point in iterate_points(args):
+        params = build_request_params(
+            latitude=point["latitude"],
+            longitude=point["longitude"],
+            start_date=args.start_date,
+            forecast_days=args.forecast_days,
+        )
+        payload = fetch_forecast(params)
+        rows = parse_daily_data(payload)
+
+        point_name = slugify(point["name"])
+        output_file = args.output_dir / f"forecast_{point_name}_{run_id}.csv"
+
+        save_csv(rows, output_file)
+        rotate_history(args.output_dir, point_name, args.keep_last)
+
+        print(f"[{point['name']}] ({run_id}) Datos guardados en {output_file}")
 
 
 def iterate_points(args: argparse.Namespace) -> Iterable[Dict[str, Any]]:
@@ -157,26 +209,30 @@ def iterate_points(args: argparse.Namespace) -> Iterable[Dict[str, Any]]:
 
 def main() -> None:
     args = parse_args()
-    timestamp = args.start_date.strftime("%Y%m%d")
+    iteration = 0
 
-    for point in iterate_points(args):
-        params = build_request_params(
-            latitude=point["latitude"],
-            longitude=point["longitude"],
-            start_date=args.start_date,
-            forecast_days=args.forecast_days,
+    while True:
+        iteration += 1
+        run_timestamp = dt.datetime.now()
+        print(
+            f"Iniciando iteración {iteration} a las "
+            f"{run_timestamp.isoformat(timespec='seconds')}"
         )
-        payload = fetch_forecast(params)
-        rows = parse_daily_data(payload)
 
-        if args.points_file is None:
-            output_file = args.output_dir / f"forecast_{timestamp}.csv"
-        else:
-            point_name = slugify(point["name"])
-            output_file = args.output_dir / f"forecast_{point_name}_{timestamp}.csv"
+        run_iteration(args, run_timestamp)
 
-        save_csv(rows, output_file)
-        print(f"[{point['name']}] Datos guardados en {output_file}")
+        if not args.continuous and iteration >= cast(int, args.iterations):
+            break
+
+        sleep_seconds = args.interval_minutes * 60
+        print(
+            f"Esperando {args.interval_minutes} minutos antes de la siguiente iteración..."
+        )
+        try:
+            time.sleep(sleep_seconds)
+        except KeyboardInterrupt:
+            print("Interrupción recibida durante la espera. Finalizando.")
+            break
 
 
 if __name__ == "__main__":
